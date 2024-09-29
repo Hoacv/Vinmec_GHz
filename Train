@@ -1,0 +1,80 @@
+import os
+import torch  # PyTorch
+from monai.losses import DiceLoss  # MONAI loss function
+from monai.optimizers import Novograd  # MONAI optimizer
+from monai.networks.nets import UNet  # MONAI UNet model
+from torchvision import transforms
+from monai.data import Dataset, DataLoader
+
+# Define paths
+data_dir = 'D:\\VINMEC\\archive\\ultrasound_breast_classification'  # Update this path
+benign_dir = os.path.join(data_dir, 'benign')
+malignant_dir = os.path.join(data_dir, 'malignant')
+
+# Define transformations
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),  # Resize images to a standard size
+    transforms.ToTensor(),            # Convert PIL images to tensors
+])
+
+# Prepare the dataset
+images = []
+labels = []
+
+# Load benign images
+for filename in os.listdir(benign_dir):
+    if filename.endswith(('.png', '.jpg', '.jpeg')):  # Add more formats if needed
+        images.append(os.path.join(benign_dir, filename))
+        labels.append(0)  # Label 0 for benign
+
+# Load malignant images
+for filename in os.listdir(malignant_dir):
+    if filename.endswith(('.png', '.jpg', '.jpeg')):  # Add more formats if needed
+        images.append(os.path.join(malignant_dir, filename))
+        labels.append(1)  # Label 1 for malignant
+
+# Create a dataset
+dataset = Dataset(data={'img': images, 'label': labels}, transform=transform)
+
+# Create a DataLoader
+batch_size = 64  # Define your batch size
+data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+# Example of how to iterate through the DataLoader
+for batch_data in data_loader:
+    images, labels = batch_data['img'], batch_data['label']
+    # Here you can use images and labels for training
+
+def train():
+    model = UNet(
+        dimensions=2,  # Change to 3 if you have 3D data
+        in_channels=1,  # Change according to your data
+        out_channels=2,  # Change according to your number of classes
+        channels=(16, 32, 64, 128),
+        strides=(2, 2, 2),
+        num_res_units=2,
+    )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    loss_function = DiceLoss(sigmoid=True)
+    optimizer = Novograd(model.parameters(), lr=1e-4)
+    
+    # Define the number of epochs
+    num_epochs = 10  # You can change this to any number you prefer
+
+    for epoch in range(num_epochs):
+        model.train()
+        epoch_loss = 0
+        for batch_data in data_loader:
+            images, labels = batch_data['image'].to(device), batch_data['label'].to(device)
+
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = loss_function(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            epoch_loss += loss.item()
+
+        print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {epoch_loss / len(data_loader)}")
